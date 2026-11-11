@@ -9,6 +9,7 @@
 //! * fixed value sets are enums, RPCs with many optional parameters take an options struct.
 
 mod debug;
+mod hot;
 mod io;
 mod isolate;
 mod objects;
@@ -16,4 +17,7 @@ mod profiler;
 mod streams;
 mod vm;
 
+pub use hot::{
+    FLUTTER_TOOLS_ALIAS, HotReloadOptions, HotReloadResult, HotReloadStrategy, HotRestartOptions,
+};
 pub use io::HttpWatchOptions;

@@ -5,8 +5,8 @@
 //! a `broadcast` channel. When the socket ends, every pending request fails with
 //! [`Error::Closed`] and all [`EventStream`](crate::EventStream)s finish.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
@@ -16,12 +16,16 @@ use tracing::{debug, trace, warn};
 use url::Url;
 
 use crate::error::{Error, Result, RpcError};
-use crate::types::{Event, StreamEvent, StreamId};
+use crate::types::{Event, EventKind, RegisteredService, StreamEvent, StreamId};
 use crate::url::to_websocket_url;
 
 const MAX_REDIRECTS: usize = 5;
 
 pub(crate) type Reply = oneshot::Sender<Result<Value>>;
+
+/// Services registered by other clients, keyed by method name. Updated for every
+/// `Service` stream event the socket delivers, whoever asked for them.
+pub(crate) type ServiceRegistry = Arc<Mutex<BTreeMap<String, RegisteredService>>>;
 
 pub(crate) enum Command {
     Request {
@@ -38,6 +42,7 @@ pub(crate) struct Connection {
     pub commands: mpsc::UnboundedSender<Command>,
     pub events: broadcast::WeakSender<StreamEvent>,
     pub closed: watch::Receiver<bool>,
+    pub services: ServiceRegistry,
     pub url: Url,
 }
 
@@ -81,12 +86,15 @@ pub(crate) async fn open(url: &str, event_capacity: usize) -> Result<Connection>
     let weak_events = event_tx.downgrade();
     let (closed_tx, closed_rx) = watch::channel(false);
 
-    tokio::spawn(run(socket, cmd_rx, event_tx, closed_tx));
+    let services = ServiceRegistry::default();
+
+    tokio::spawn(run(socket, cmd_rx, event_tx, closed_tx, services.clone()));
 
     Ok(Connection {
         commands: cmd_tx,
         events: weak_events,
         closed: closed_rx,
+        services,
         url,
     })
 }
@@ -96,6 +104,7 @@ async fn run(
     mut commands: mpsc::UnboundedReceiver<Command>,
     events: broadcast::Sender<StreamEvent>,
     closed: watch::Sender<bool>,
+    services: ServiceRegistry,
 ) {
     let (mut sink, mut stream) = socket.split();
     let mut pending: HashMap<String, Reply> = HashMap::new();
@@ -119,13 +128,15 @@ async fn run(
             },
             frame = stream.next() => match frame {
                 Some(Ok(Message::Text(text))) => {
-                    if let Some(answer) = handle_text(text.as_str(), &mut pending, &events, None) {
+                    if let Some(answer) = handle_text(text.as_str(), &mut pending, &events, &services, None) {
                         if sink.send(Message::text(answer)).await.is_err() {
                             break;
                         }
                     }
                 }
-                Some(Ok(Message::Binary(bytes))) => handle_binary(&bytes, &mut pending, &events),
+                Some(Ok(Message::Binary(bytes))) => {
+                    handle_binary(&bytes, &mut pending, &events, &services)
+                }
                 Some(Ok(Message::Close(_))) | None => break,
                 Some(Ok(_)) => {} // ping / pong are answered by tungstenite
                 Some(Err(e)) => {
@@ -154,6 +165,7 @@ fn handle_text(
     text: &str,
     pending: &mut HashMap<String, Reply>,
     events: &broadcast::Sender<StreamEvent>,
+    services: &ServiceRegistry,
     binary: Option<Arc<[u8]>>,
 ) -> Option<String> {
     trace!(%text, "<- message");
@@ -169,7 +181,7 @@ fn handle_text(
         let id = msg.get("id").filter(|v| !v.is_null());
         return match (method, id) {
             ("streamNotify", None) => {
-                dispatch_event(&msg, events, binary);
+                dispatch_event(&msg, events, services, binary);
                 None
             }
             // The VM (or DDS) is calling a service *we* would have registered.
@@ -214,6 +226,7 @@ fn handle_binary(
     bytes: &[u8],
     pending: &mut HashMap<String, Reply>,
     events: &broadcast::Sender<StreamEvent>,
+    services: &ServiceRegistry,
 ) {
     let parsed = bytes
         .get(..4)
@@ -222,7 +235,7 @@ fn handle_binary(
         .and_then(|off| Some((std::str::from_utf8(&bytes[4..off]).ok()?, &bytes[off..])));
     match parsed {
         Some((metadata, data)) => {
-            handle_text(metadata, pending, events, Some(Arc::from(data)));
+            handle_text(metadata, pending, events, services, Some(Arc::from(data)));
         }
         None => warn!(len = bytes.len(), "dropping malformed binary event"),
     }
@@ -231,6 +244,7 @@ fn handle_binary(
 fn dispatch_event(
     msg: &Value,
     events: &broadcast::Sender<StreamEvent>,
+    services: &ServiceRegistry,
     binary_data: Option<Arc<[u8]>>,
 ) {
     let Some(params) = msg.get("params") else {
@@ -245,6 +259,7 @@ fn dispatch_event(
         .map(|e| serde_json::from_value::<Event>(e.clone()));
     match (stream_id, event) {
         (Some(stream_id), Some(Ok(event))) => {
+            track_services(&event, services);
             // No receivers is fine: nobody subscribed.
             let _ = events.send(StreamEvent {
                 stream_id,
@@ -263,5 +278,22 @@ fn id_key(v: &Value) -> Option<String> {
         Value::String(s) => Some(s.clone()),
         Value::Number(n) => Some(n.to_string()),
         _ => None,
+    }
+}
+
+fn track_services(event: &Event, services: &ServiceRegistry) {
+    let Ok(mut map) = services.lock() else { return };
+    match event.kind {
+        EventKind::ServiceRegistered => {
+            if let Some(svc) = RegisteredService::from_event(event) {
+                map.insert(svc.method.clone(), svc);
+            }
+        }
+        EventKind::ServiceUnregistered => {
+            if let Some(method) = &event.method {
+                map.remove(method);
+            }
+        }
+        _ => {}
     }
 }

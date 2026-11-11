@@ -37,6 +37,9 @@
 //!   ([`StreamId`], [`StepOption`], [`ExceptionPauseMode`], [`SourceReportKind`], [`VmFlag`], …).
 //! * `X|Sentinel` results map `Sentinel` to [`Error::Sentinel`].
 //! * VM-added enum values never break decoding (`Unknown` variants).
+//! * [`VmService::hot_reload`] / [`VmService::hot_restart`] pick the Flutter tool's recompiling
+//!   services when attached; [`VmService::registered_services`] lists what other clients offer.
+//! * [`VmService::watch_http_requests`] streams the `dart:io` HTTP requests of an isolate.
 //! * Escape hatches: [`VmService::call_method`], [`VmService::call_extension`]
 //!   (for `ext.*` service extensions) and [`VmService::call_raw`].
 
@@ -50,7 +53,10 @@ mod params;
 pub mod types;
 mod url;
 
-pub use api::HttpWatchOptions;
+pub use api::{
+    FLUTTER_TOOLS_ALIAS, HotReloadOptions, HotReloadResult, HotReloadStrategy, HotRestartOptions,
+    HttpWatchOptions,
+};
 pub use client::{EventStream, VmService, VmServiceBuilder};
 pub use error::{Error, Result, RpcError, RpcErrorCode};
 pub use method::RpcMethod;

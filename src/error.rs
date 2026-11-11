@@ -38,6 +38,10 @@ pub enum Error {
     #[error("VM reported an error: {}", .0.message)]
     Vm(Box<ErrorObject>),
 
+    /// The operation needs something the connected VM / tooling does not offer.
+    #[error("unsupported: {0}")]
+    Unsupported(String),
+
     /// A lookup (e.g. "the main isolate") came back empty.
     #[error("not found: {0}")]
     NotFound(String),

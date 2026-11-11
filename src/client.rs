@@ -2,7 +2,7 @@
 
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -14,7 +14,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::warn;
 
-use crate::connection::{self, Command};
+use crate::connection::{self, Command, ServiceRegistry};
 use crate::error::{Error, Result, RpcErrorCode};
 use crate::method::RpcMethod;
 use crate::params::Params;
@@ -72,6 +72,8 @@ impl VmServiceBuilder {
                 commands: conn.commands,
                 events: conn.events,
                 closed: conn.closed,
+                services: conn.services,
+                service_stream_listening: AtomicBool::new(false),
                 next_id: AtomicU64::new(1),
                 request_timeout: self.request_timeout,
                 url: conn.url.to_string(),
@@ -84,6 +86,8 @@ struct Inner {
     commands: mpsc::UnboundedSender<Command>,
     events: broadcast::WeakSender<StreamEvent>,
     closed: watch::Receiver<bool>,
+    services: ServiceRegistry,
+    service_stream_listening: AtomicBool,
     next_id: AtomicU64,
     request_timeout: Option<Duration>,
     url: String,
@@ -266,6 +270,21 @@ impl VmService {
             Err(e) => return Err(e),
         }
         Ok(events)
+    }
+
+    pub(crate) fn service_registry(&self) -> &ServiceRegistry {
+        &self.inner.services
+    }
+
+    /// Remembers that `streamListen(Service)` succeeded, so the registry is live.
+    pub(crate) fn set_service_stream_listening(&self) {
+        self.inner
+            .service_stream_listening
+            .store(true, Ordering::Release);
+    }
+
+    pub(crate) fn service_stream_listening(&self) -> bool {
+        self.inner.service_stream_listening.load(Ordering::Acquire)
     }
 
     fn make_stream(&self, filter: Option<StreamId>) -> EventStream {

@@ -10,6 +10,7 @@ JSON-RPC 2.0 over WebSocket interface that Dart and Flutter debuggers, DevTools 
 - profile CPU, memory and allocations, fetch timelines and heap snapshots
 - subscribe to VM events (logs, stdout/stderr, GC, debug, isolate lifecycle)
 - call service extensions such as `ext.flutter.*`
+- **hot reload and hot restart** (through the Flutter tool, or the plain VM where possible)
 - **monitor the HTTP requests a Dart program makes**
 
 The protocol is implemented from the official
@@ -63,6 +64,28 @@ async fn main() -> dart_vm_service::Result<()> {
 }
 ```
 
+## Hot reload and hot restart
+
+These are not single VM RPCs. The VM's own `reloadSources` only re-reads files already on the
+device; for a Flutter app started with `flutter run`, the Flutter tool registers `reloadSources`
+and `hotRestart` services that recompile, sync, reload and reassemble. The helpers use whichever
+is available:
+
+```rust
+use dart_vm_service::{HotReloadOptions, HotRestartOptions};
+
+// Flutter tool attached -> full recompile + reload + reassemble.
+// Plain Dart VM -> VM reload (plus `ext.flutter.reassemble` on Flutter isolates).
+let result = vm.hot_reload(&isolate.id, HotReloadOptions::default()).await?;
+assert!(result.is_success());
+
+// Needs the Flutter tool; returns the new main isolate (a restart creates a new one).
+let new_isolate = vm.hot_restart(HotRestartOptions::default()).await?;
+```
+
+`hot_restart` on a plain `dart run` VM returns `Error::Unsupported`: a bare Dart VM cannot
+restart itself. See [`examples/hot.rs`](examples/hot.rs).
+
 ## Monitoring HTTP requests
 
 Requests made through `dart:io`'s `HttpClient` (and therefore `package:http` and `dio` on the
@@ -115,6 +138,9 @@ Tested against a Dart 3.13.7 VM (service protocol 4.21). The spec at the time of
   (heap snapshots decode correctly).
 - The `ext.dart.io.*` extensions and the `TimelineStream` names are not part of `service.md`;
   their shapes were checked against a Dart 3.13 VM, and fields are optional where possible.
+- Hot reload/restart through the Flutter tool was verified against Flutter 3.47 on macOS
+  (`flutter run -d macos`). When a reload fails to compile, the tool answers with an empty
+  internal error; the details are only printed in the tool's own console.
 - `ext.flutter.*` extensions can be called with `call_extension` but have no typed wrappers.
 - HTTP monitoring only sees `dart:io` traffic and only after profiling is enabled; it is not
   available for Flutter Web.

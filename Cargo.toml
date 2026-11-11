@@ -1,6 +1,6 @@
 [package]
 name = "dart-vm-service"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Async (Tokio) client for the Dart VM Service Protocol: debug, hot reload, profile and monitor Dart/Flutter apps"

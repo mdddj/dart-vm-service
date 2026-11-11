@@ -111,3 +111,26 @@ pub struct StreamEvent {
     /// ordinary text events.
     pub binary_data: Option<Arc<[u8]>>,
 }
+
+/// A service another client registered with `registerService` (for example the
+/// Flutter tool's `reloadSources` / `hotRestart`). Announced by `ServiceRegistered`
+/// events on the `Service` stream.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegisteredService {
+    /// Service name, e.g. `hotRestart`.
+    pub service: String,
+    /// Method to call, e.g. `s0.hotRestart` (the VM/DDS namespaces it).
+    pub method: String,
+    /// Human readable owner, e.g. `Flutter Tools`.
+    pub alias: String,
+}
+
+impl RegisteredService {
+    pub(crate) fn from_event(event: &Event) -> Option<Self> {
+        Some(Self {
+            service: event.service.clone()?,
+            method: event.method.clone()?,
+            alias: event.alias.clone().unwrap_or_default(),
+        })
+    }
+}
