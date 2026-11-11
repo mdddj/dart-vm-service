@@ -1,6 +1,6 @@
 [package]
 name = "dart-vm-service"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Async (Tokio) client for the Dart VM Service Protocol: debug, hot reload, profile and monitor Dart/Flutter apps"
@@ -9,7 +9,7 @@ repository = "https://github.com/mdddj/dart-vm-service"
 license = "MIT OR Apache-2.0"
 keywords = ["dart", "flutter", "vm-service", "debugger", "websocket"]
 categories = ["development-tools::debugging", "network-programming", "asynchronous"]
-include = ["/src", "/examples", "/README.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
+include = ["/src", "/examples", "/README.md", "/README.zh-CN.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
 
 [dependencies]
 base64 = "0.23.1"

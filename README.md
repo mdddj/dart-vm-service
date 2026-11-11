@@ -1,5 +1,7 @@
 # dart-vm-service
 
+**English** | [简体中文](https://github.com/mdddj/dart-vm-service/blob/main/README.zh-CN.md)
+
 An async ([Tokio](https://tokio.rs)) client for the **Dart VM Service Protocol** — the
 JSON-RPC 2.0 over WebSocket interface that Dart and Flutter debuggers, DevTools and
 `flutter attach` talk to. Use it to build tooling in Rust that can:
@@ -21,7 +23,7 @@ specification.
 
 ```toml
 [dependencies]
-dart-vm-service = "0.1"
+dart-vm-service = "0.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 futures-util = "0.3"
 ```
@@ -125,6 +127,7 @@ while let Some(req) = requests.next().await {
 ```text
 cargo run --example inspect      -- <vm-service-url>
 cargo run --example http_monitor -- <vm-service-url> [--bodies]
+cargo run --example hot          -- <vm-service-url> reload|restart
 ```
 
 ## Compatibility and limitations

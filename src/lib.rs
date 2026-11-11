@@ -1,5 +1,7 @@
 //! # dart-vm-service
 //!
+//! **English** | [简体中文](https://github.com/mdddj/dart-vm-service/blob/main/README.zh-CN.md)
+//!
 //! An async (Tokio) client for the **Dart VM Service Protocol** — the JSON-RPC 2.0
 //! over WebSocket interface that Dart/Flutter debuggers, DevTools and
 //! `flutter attach` use. Based on the protocol spec in
